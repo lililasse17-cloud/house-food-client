@@ -1,0 +1,2 @@
+Copy your original bg.png, burger.png and btn.png into this folder (same names).
+App.jsx imports them from ./assets/ exactly as in your original code.
