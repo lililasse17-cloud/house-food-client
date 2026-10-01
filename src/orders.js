@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export const UNIT_PRICE = 500; // السعر الافتراضي إن لم يُحدد
+export const UNIT_PRICE = 500;
 
 export const validateOrder = ({ name, phone, street, cartCount }) => {
   const errors = {};
@@ -15,10 +15,10 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
   try {
     let receiptUrl = '';
 
-    // 1. رفع صورة الوصل إذا كانت طريقة الدفع CCP وتم اختيار ملف
+    // 1. رفع صورة الوصل إذا تم اختيار ملف
     if (method === 'ccp' && receiptFile) {
       const fileExt = receiptFile.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36.substring(2))}.${fileExt}`;
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from('receipts')
@@ -26,7 +26,7 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
 
       if (uploadError) {
         console.error('Storage Upload Error:', uploadError.message);
-        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من إعدادات الـ Storage Bucket باسم receipts.' };
+        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من تفعيل Public للـ Bucket receipts في Supabase.' };
       }
 
       const { data: publicURLData } = supabase.storage
@@ -36,23 +36,24 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
       receiptUrl = publicURLData?.publicUrl || '';
     }
 
-    // حساب المبلغ الإجمالي
+    // حساب المبلغ الإجمالي للطلب
     const totalAmount = items.reduce(
       (sum, item) => sum + Number(item.finalPrice || item.price || UNIT_PRICE) * (item.quantity || 1),
       0
     );
 
-    // 2. إدخال الطلب الرئيسي في جدول orders
+    // دمج العنوان ورقم العمارة في حقل address الموجود في جدول orders
+    const fullAddress = building ? `${street}, عمارة: ${building}` : street;
+
+    // 2. إدخال الطلب في جدول orders (مطابق للأعمدة الظاهرة في الصورة: customer_name, phone, address, payment_method, total_price)
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .insert([
         {
           customer_name: name,
           phone: phone,
-          street_address: street,
-          building_number: building || '',
+          address: fullAddress,
           payment_method: method,
-          receipt_url: receiptUrl,
           total_price: totalAmount,
           status: 'pending',
         },
@@ -67,15 +68,14 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
 
     const orderId = orderData.id;
 
-    // 3. إدخال تفاصيل المنتجات في جدول order_items
+    // 3. إدخال عناصر الطلب في جدول order_items
     const orderItemsPayload = items.map((item) => ({
       order_id: orderId,
       product_id: item.id || null,
       product_name: item.name || 'وجبة',
       quantity: item.quantity || 1,
       unit_price: Number(item.finalPrice || item.price || UNIT_PRICE),
-      size: item.selectedSize || 'Regular',
-      addons: item.addons ? item.addons.join(', ') : '',
+      subtotal: Number(item.finalPrice || item.price || UNIT_PRICE) * (item.quantity || 1),
     }));
 
     const { error: itemsError } = await supabase
