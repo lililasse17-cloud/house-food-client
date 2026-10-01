@@ -15,7 +15,7 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
   try {
     let receiptUrl = '';
 
-    // 1. رفع صورة الوصل إذا تم اختيار ملف
+    // رفع صورة الوصل إذا تم اختيار ملف
     if (method === 'ccp' && receiptFile) {
       const fileExt = receiptFile.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -26,7 +26,7 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
 
       if (uploadError) {
         console.error('Storage Upload Error:', uploadError.message);
-        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من تفعيل Public للـ Bucket receipts في Supabase.' };
+        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من إفعيل Public للـ Bucket receipts في Supabase.' };
       }
 
       const { data: publicURLData } = supabase.storage
@@ -45,7 +45,7 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
     // دمج العنوان ورقم العمارة في حقل address الموجود في جدول orders
     const fullAddress = building ? `${street}, عمارة: ${building}` : street;
 
-    // 2. إدخال الطلب في جدول orders (مطابق للأعمدة الظاهرة في الصورة: customer_name, phone, address, payment_method, total_price)
+    // 2. إدخال الطلب في جدول orders (تم تعديل الحقل إلى total ليطابق قاعدة البيانات)
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .insert([
@@ -54,7 +54,7 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
           phone: phone,
           address: fullAddress,
           payment_method: method,
-          total_price: totalAmount,
+          total: totalAmount,
           status: 'pending',
         },
       ])
