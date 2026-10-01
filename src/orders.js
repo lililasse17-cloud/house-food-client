@@ -1,39 +1,95 @@
 import { supabase } from './supabase';
 
-export const UNIT_PRICE = 1200; // DA — remplacer par la table products quand elle existera
+export const UNIT_PRICE = 500; // السعر الافتراضي إن لم يُحدد
 
-// Algerian mobile numbers: 05/06/07 + 8 digits (also accepts +213 / 00213)
-const PHONE_RE = /^(?:\+213|00213|0)[567]\d{8}$/;
-
-export function validateOrder({ name, phone, street, cartCount }) {
+export const validateOrder = ({ name, phone, street, cartCount }) => {
   const errors = {};
-  if (cartCount < 1) errors.cart = 'Your cart is empty.';
-  if (name.trim().length < 3 || name.length > 80) errors.name = 'Enter your full name.';
-  if (!PHONE_RE.test(phone.replace(/[\s.-]/g, ''))) errors.phone = 'Enter a valid Algerian phone number.';
-  if (street.trim().length < 5 || street.length > 200) errors.street = 'Enter a complete street address.';
+  if (!name || name.trim() < 3) errors.name = 'الرجاء إدخال الاسم الكامل بشكل صحيح.';
+  if (!phone || phone.trim() < 9) errors.phone = 'الرجاء إدخال رقم هاتف صحيح.';
+  if (!street || street.trim() < 3) errors.street = 'الرجاء إدخال عنوان التوصيل.';
+  if (cartCount === 0) errors.cart = 'سلة التسوق فارغة.';
   return errors;
-}
+};
 
-export function friendlyError(error) {
-  if (!error) return null;
-  const status = error.status ?? 0;
-  if (status === 401 || status === 403 || error.code === '42501')
-    return 'Ordering is temporarily unavailable. Please call us to place your order.';
-  if (error.message?.includes('Failed to fetch'))
-    return 'No connection. Check your internet and try again.';
-  return 'Something went wrong while sending your order. Please try again.';
-}
+export const placeOrder = async ({ name, phone, street, building, items, method, receiptFile }) => {
+  try {
+    let receiptUrl = '';
 
-export async function placeOrder({ name, phone, street, building, items, method }) {
-  // No .select() on purpose: anon only needs INSERT permission, never SELECT.
-  const { error } = await supabase.from('orders').insert([{
-    customer_name: name.trim(),
-    phone: phone.replace(/[\s.-]/g, ''),
-    address: `${street.trim()}, Building/Apt: ${building.trim() || 'N/A'}`,
-    total_price: items.length * UNIT_PRICE,
-    items,                 // jsonb column: send the array, not JSON.stringify
-    payment_method: method,
-    status: 'Pending',
-  }]);
-  return { error, message: friendlyError(error) };
-}
+    // 1. رفع صورة الوصل إذا كانت طريقة الدفع CCP وتم اختيار ملف
+    if (method === 'ccp' && receiptFile) {
+      const fileExt = receiptFile.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36.substring(2))}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(fileName, receiptFile);
+
+      if (uploadError) {
+        console.error('Storage Upload Error:', uploadError.message);
+        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من إعدادات الـ Storage Bucket باسم receipts.' };
+      }
+
+      const { data: publicURLData } = supabase.storage
+        .from('receipts')
+        .getPublicUrl(fileName);
+
+      receiptUrl = publicURLData?.publicUrl || '';
+    }
+
+    // حساب المبلغ الإجمالي
+    const totalAmount = items.reduce(
+      (sum, item) => sum + Number(item.finalPrice || item.price || UNIT_PRICE) * (item.quantity || 1),
+      0
+    );
+
+    // 2. إدخال الطلب الرئيسي في جدول orders
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .insert([
+        {
+          customer_name: name,
+          phone: phone,
+          street_address: street,
+          building_number: building || '',
+          payment_method: method,
+          receipt_url: receiptUrl,
+          total_price: totalAmount,
+          status: 'pending',
+        },
+      ])
+      .select()
+      .single();
+
+    if (orderError) {
+      console.error('Order Insert Error:', orderError.message);
+      return { error: true, message: `خطأ في إرسال الطلب: ${orderError.message}` };
+    }
+
+    const orderId = orderData.id;
+
+    // 3. إدخال تفاصيل المنتجات في جدول order_items
+    const orderItemsPayload = items.map((item) => ({
+      order_id: orderId,
+      product_id: item.id || null,
+      product_name: item.name || 'وجبة',
+      quantity: item.quantity || 1,
+      unit_price: Number(item.finalPrice || item.price || UNIT_PRICE),
+      size: item.selectedSize || 'Regular',
+      addons: item.addons ? item.addons.join(', ') : '',
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItemsPayload);
+
+    if (itemsError) {
+      console.error('Order Items Insert Error:', itemsError.message);
+      return { error: true, message: `خطأ في إدخال تفاصيل الوجبات: ${itemsError.message}` };
+    }
+
+    return { error: false, message: 'تم إرسال الطلب بنجاح!' };
+  } catch (err) {
+    console.error('Unexpected error in placeOrder:', err);
+    return { error: true, message: 'حدث خطأ غير متوقع أثناء إتمام الطلب.' };
+  }
+};
