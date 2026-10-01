@@ -15,7 +15,6 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
   try {
     let receiptUrl = '';
 
-    // رفع صورة الوصل إذا تم اختيار ملف
     if (method === 'ccp' && receiptFile) {
       const fileExt = receiptFile.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -26,34 +25,36 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
 
       if (uploadError) {
         console.error('Storage Upload Error:', uploadError.message);
-        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من إفعيل Public للـ Bucket receipts في Supabase.' };
+        return { error: true, message: 'فشل رفع صورة الوصل. تأكد من إعدادات الـ Storage.' };
       }
 
       const { data: publicURLData } = supabase.storage
         .from('receipts')
-        .getPublicUrl(fileName);
+        getPublicUrl(fileName);
 
       receiptUrl = publicURLData?.publicUrl || '';
     }
 
-    // حساب المبلغ الإجمالي للطلب
     const totalAmount = items.reduce(
       (sum, item) => sum + Number(item.finalPrice || item.price || UNIT_PRICE) * (item.quantity || 1),
       0
     );
 
-    // دمج العنوان ورقم العمارة في حقل address الموجود في جدول orders
     const fullAddress = building ? `${street}, عمارة: ${building}` : street;
+    
+    // توليد رقم طلب فريد لتجاوز شرط not-null constraint
+    const orderNumber = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    // 2. إدخال الطلب في جدول orders (تم تعديل الحقل إلى total ليطابق قاعدة البيانات)
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .insert([
         {
+          order_number: orderNumber,
           customer_name: name,
           phone: phone,
           address: fullAddress,
           payment_method: method,
+          receipt_url: receiptUrl,
           total: totalAmount,
           status: 'pending',
         },
@@ -68,7 +69,6 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
 
     const orderId = orderData.id;
 
-    // 3. إدخال عناصر الطلب في جدول order_items
     const orderItemsPayload = items.map((item) => ({
       order_id: orderId,
       product_id: item.id || null,
