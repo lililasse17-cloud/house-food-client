@@ -28,9 +28,10 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
         return { error: true, message: 'فشل رفع صورة الوصل. تأكد من إعدادات الـ Storage.' };
       }
 
+      // التصحيح هنا: استدعاء getPublicUrl بالشكل الصحيح والسليم
       const { data: publicURLData } = supabase.storage
         .from('receipts')
-        getPublicUrl(fileName);
+        .getPublicUrl(fileName);
 
       receiptUrl = publicURLData?.publicUrl || '';
     }
@@ -41,8 +42,6 @@ export const placeOrder = async ({ name, phone, street, building, items, method,
     );
 
     const fullAddress = building ? `${street}, عمارة: ${building}` : street;
-    
-    // توليد رقم طلب فريد لتجاوز شرط not-null constraint
     const orderNumber = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const { data: orderData, error: orderError } = await supabase
