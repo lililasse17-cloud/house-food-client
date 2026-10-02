@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { validateOrder, placeOrder, UNIT_PRICE } from './orders';
+import TrackOrder from './TrackOrder';
 import bgImg from './assets/bg.png';
 import burgerImg from './assets/burger.png';
 import btnImg from './assets/btn.png';
@@ -55,7 +56,7 @@ const TEXT = {
     cartTitle: 'Shopping Cart',
     cartSub: 'Review your items before checkout.',
     cartEmptyTitle: 'Your Cart is Empty',
-    cartEmptySub: "Looks like you haven't added any meals yet.",
+    cartEmptySub: "Looks like you haven't added any meals yet. You can track your existing orders below.",
     exploreBtn: 'Explore Menu',
     item: 'Item',
     unitPrice: 'Unit Price',
@@ -120,7 +121,7 @@ const TEXT = {
     cartTitle: 'سلة التسوق',
     cartSub: 'راجع منتجاتك قبل إتمام الطلب.',
     cartEmptyTitle: 'سلتك فارغة',
-    cartEmptySub: 'يبدو أنك لم تضف أي وجبة بعد.',
+    cartEmptySub: 'يبدو أنك لم تضف أي وجبة بعد. يمكنك تتبع طلباتك السابقة أدناه.',
     exploreBtn: 'تصفح المنيو',
     item: 'المنتج',
     unitPrice: 'سعر الوحدة',
@@ -819,14 +820,20 @@ function App() {
             </div>
 
             {cartItems.length === 0 ? (
-              <div className="w-full bg-[#111111] border border-gray-800 rounded-2xl p-8 sm:p-14 flex flex-col items-center justify-center text-center my-6">
-                <div className="text-5xl mb-2">🛒</div>
+              <div className="w-full bg-[#111111] border border-gray-800 rounded-2xl p-6 sm:p-10 flex flex-col items-center justify-center text-center my-6">
+                <div className="text-4xl mb-2">🛒</div>
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-1">{t.cartEmptyTitle}</h2>
-                <p className="text-gray-400 text-xs sm:text-sm max-w-sm mb-5">{t.cartEmptySub}</p>
+                <p className="text-gray-400 text-xs sm:text-sm max-w-md mb-6">{t.cartEmptySub}</p>
+                
+                {/* مكون التظهر هنا داخل السلة الفارغة ليتمكن الزبون من تتبع طلبه بعد الإتمام */}
+                <div className="w-full max-w-md bg-[#1a1a1a] border border-gray-800 rounded-xl p-4 mb-6 shadow-xl">
+                  <TrackOrder />
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setCurrentPage('home')}
-                  className="bg-[#ff8a00] text-black font-bold px-6 py-2 rounded-full hover:scale-105 transition-all text-xs sm:text-sm"
+                  className="bg-[#ff8a00] text-black font-bold px-6 py-2 rounded-full hover:scale-105 transition-all text-xs sm:text-sm cursor-pointer shadow-md"
                 >
                   {t.exploreBtn}
                 </button>
@@ -907,27 +914,34 @@ function App() {
                   })}
                 </div>
 
-                <div className="w-full lg:w-[320px] bg-[#111111] border border-gray-800 rounded-2xl p-4 sm:p-5 shadow-xl shrink-0">
-                  <h2 className="text-base font-bold mb-3">{t.orderSummary}</h2>
-                  <div className="flex justify-between text-gray-400 text-xs mb-2">
-                    <span>{t.subtotal}</span>
-                    <span>{total} DA</span>
+                <div className="w-full lg:w-[320px] bg-[#111111] border border-gray-800 rounded-2xl p-4 sm:p-5 shadow-xl shrink-0 flex flex-col gap-4">
+                  <div>
+                    <h2 className="text-base font-bold mb-3">{t.orderSummary}</h2>
+                    <div className="flex justify-between text-gray-400 text-xs mb-2">
+                      <span>{t.subtotal}</span>
+                      <span>{total} DA</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400 text-xs mb-3">
+                      <span>{t.deliveryFee}</span>
+                      <span>0 DA</span>
+                    </div>
+                    <div className="border-t border-gray-700 pt-3 mb-4 flex justify-between items-center">
+                      <span className="text-lg font-bold">{t.total}</span>
+                      <span className="text-[#ff8a00] text-base font-bold font-audiowide">{total} DA</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage('checkout')}
+                      className="w-full bg-[#ff8a00] hover:bg-[#e67a00] text-black font-bold py-2.5 rounded-full transition-all text-xs cursor-pointer shadow-md"
+                    >
+                      {t.checkoutBtn}
+                    </button>
                   </div>
-                  <div className="flex justify-between text-gray-400 text-xs mb-3">
-                    <span>{t.deliveryFee}</span>
-                    <span>0 DA</span>
+
+                  {/* صندوق التتبع مصغراً في جانب السلة أيضاً */}
+                  <div className="border-t border-gray-800 pt-4 mt-2">
+                    <TrackOrder />
                   </div>
-                  <div className="border-t border-gray-700 pt-3 mb-5 flex justify-between items-center">
-                    <span className="text-lg font-bold">{t.total}</span>
-                    <span className="text-[#ff8a00] text-base font-bold font-audiowide">{total} DA</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage('checkout')}
-                    className="w-full bg-[#ff8a00] hover:bg-[#e67a00] text-black font-bold py-2.5 rounded-full transition-all text-xs cursor-pointer shadow-md"
-                  >
-                    {t.checkoutBtn}
-                  </button>
                 </div>
               </div>
             )}
@@ -1206,7 +1220,7 @@ function App() {
 
       {orderPlaced && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-fade-in-up">
-          <div className="bg-[#111] border border-[#ff8a00] rounded-2xl p-6 max-w-xs w-full text-center flex flex-col items-center">
+          <div className="bg-[#111] border border-[#ff8a00] rounded-2xl p-6 max-w-xs w-full text-center flex flex-col items-center shadow-2xl">
             <div className="text-4xl mb-2">🎉</div>
             <h2 className="text-lg font-bold text-white mb-1">{t.orderSuccess}</h2>
             <p className="text-gray-400 text-xs mb-4">{t.orderSuccessSub}</p>
@@ -1214,9 +1228,19 @@ function App() {
               type="button"
               onClick={() => {
                 setOrderPlaced(false);
+                setCurrentPage('cart');
+              }}
+              className="w-full bg-[#ff8a00] text-black font-bold py-2.5 rounded-full hover:scale-105 transition-all text-xs cursor-pointer shadow-md mb-2"
+            >
+              تتبع طلبك الآن
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOrderPlaced(false);
                 setCurrentPage('home');
               }}
-              className="bg-[#ff8a00] text-black font-bold px-5 py-2 rounded-full hover:scale-105 transition-all text-xs cursor-pointer shadow-md"
+              className="text-gray-400 hover:text-white text-xs underline cursor-pointer"
             >
               {t.backHome}
             </button>
