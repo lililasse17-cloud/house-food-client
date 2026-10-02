@@ -1,28 +1,50 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { supabase } from './supabase';
 
-interface TrackedOrder {
-  id: string;
-  order_number: string;
-  order_sequence: number | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  total: number;
-}
-
-const LABELS: Record<string, string> = {
-  New: 'تم استلام طلبك',
-  Confirmed: 'تم تأكيد الطلب',
-  Preparing: 'قيد التحضير',
-  Ready: 'جاهز للتسليم',
-  Completed: 'تم التوصيل',
-  Cancelled: 'تم إلغاء الطلب',
+const LABELS = {
+  ar: {
+    title: 'تتبع طلباتك برقم الهاتف',
+    placeholder: 'أدخل رقم هاتفك...',
+    button: 'عرض الطلبات',
+    loading: 'جاري البحث...',
+    errorPhone: 'الرجاء إدخال رقم الهاتف.',
+    errorNotFound: 'لا توجد طلبات مسجلة برقم الهاتف هذا.',
+    errorGeneral: 'حدث خطأ، حاول مرة أخرى.',
+    orderNum: 'رقم الطلب:',
+    status: 'الحالة:',
+    statusNames: {
+      New: 'تم استلام طلبك',
+      Confirmed: 'تم تأكيد الطلب',
+      Preparing: 'قيد التحضير',
+      Ready: 'جاهز للتسليم',
+      Completed: 'تم التوصيل',
+      Cancelled: 'تم إلغاء الطلب',
+    }
+  },
+  en: {
+    title: 'Track your orders by phone',
+    placeholder: 'Enter your phone number...',
+    button: 'View Orders',
+    loading: 'Searching...',
+    errorPhone: 'Please enter your phone number.',
+    errorNotFound: 'No orders found for this phone number.',
+    errorGeneral: 'An error occurred, please try again.',
+    orderNum: 'Order',
+    status: 'Status:',
+    statusNames: {
+      New: 'Order Received',
+      Confirmed: 'Order Confirmed',
+      Preparing: 'Preparing',
+      Ready: 'Ready for Delivery',
+      Completed: 'Completed',
+      Cancelled: 'Cancelled',
+    }
+  }
 };
 
-const normalize = (s: unknown): string => {
+const normalize = (s) => {
   const k = String(s ?? '').trim().toLowerCase();
-  const map: Record<string, string> = {
+  const map = {
     new: 'New', pending: 'New',
     confirmed: 'Confirmed',
     preparing: 'Preparing',
@@ -33,73 +55,73 @@ const normalize = (s: unknown): string => {
   return map[k] ?? 'New';
 };
 
-const STORAGE_KEY = 'last_tracked_phone';
+// تحويل آمن إلى رقم (نفس لوحة البائع)
+const toNum = (v) => {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
 
-export default function TrackOrder() {
+// رقم الطلب: نفس منطق لوحة البائع تماماً
+const formatOrderNumber = (o) => {
+  const seq = toNum(o.order_sequence);
+  if (seq > 0) return String(Math.trunc(seq));
+  const label = String(o.order_number ?? '').trim();
+  if (label) return label;
+  return String(o.id ?? '').replace(/-/g, '').slice(0, 8).toUpperCase();
+};
+
+// نفس طريقة عرض لوحة البائع (# للأرقام فقط)
+const bidiSafe = (n) =>
+  n ? `\u2066${/^[A-Za-z]+[-_]/.test(n) ? '' : '#'}${n}\u2069` : '';
+
+export default function TrackOrder({ lang = 'ar' }) {
+  const t = LABELS[lang] || LABELS.ar;
   const [phone, setPhone] = useState('');
-  const [orders, setOrders] = useState<TrackedOrder[]>([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
-  const fetchOrders = useCallback(async (ph: string, silent = false) => {
-    if (!silent) setLoading(true);
+  const fetchOrders = async (ph) => {
+    setLoading(true);
     const { data, error } = await supabase.rpc('track_order', {
       p_phone: ph,
     });
-    if (!silent) setLoading(false);
+    setLoading(false);
 
     if (error) {
-      if (!silent) setError('حدث خطأ، حاول مرة أخرى.');
+      setError(t.errorGeneral);
       return;
     }
-    
-    const list = (Array.isArray(data) ? data : [data]).filter(Boolean) as TrackedOrder[];
+
+    const list = (Array.isArray(data) ? data : [data]).filter(Boolean);
     if (list.length === 0) {
-      if (!silent) {
-        setOrders([]);
-        setError('لا توجد طلبات مسجلة برقم الهاتف هذا.');
-      }
+      setOrders([]);
+      setError(t.errorNotFound);
       return;
     }
     setError(null);
     setOrders(list);
-    try {
-      localStorage.setItem(STORAGE_KEY, ph);
-    } catch {
-      /* تخزين محلي */
-    }
-  }, []);
+  };
 
-  useEffect(() => {
-    try {
-      const savedPhone = localStorage.getItem(STORAGE_KEY);
-      if (savedPhone) {
-        setPhone(savedPhone);
-        fetchOrders(savedPhone, true);
-      }
-    } catch {
-      /* لا شيء */
-    }
-  }, [fetchOrders]);
-
-  const submit = (e: React.MouseEvent) => {
+  const submit = (e) => {
     e.preventDefault();
     if (!phone.trim()) {
-      setError('الرجاء إدخال رقم الهاتف.');
+      setError(t.errorPhone);
       return;
     }
     fetchOrders(phone.trim());
   };
 
   return (
-    <div dir="rtl" className="w-full text-white">
-      <h3 className="text-sm sm:text-base font-bold mb-2.5 text-[#ff8a00]">تتبع طلباتك برقم الهاتف</h3>
+    <div dir={lang === 'ar' ? 'rtl' : 'ltr'} className="w-full text-white">
+      <h3 className="text-sm sm:text-base font-bold mb-2.5 text-[#ff8a00]">{t.title}</h3>
 
       <div className="flex flex-col gap-2 mb-3">
         <input
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          placeholder="أدخل رقم هاتفك..."
+          placeholder={t.placeholder}
           dir="ltr"
           inputMode="tel"
           className="w-full bg-[#2a2a2a] border border-gray-600 rounded-md p-2 text-xs text-white focus:outline-none focus:border-[#ff8a00]"
@@ -110,7 +132,7 @@ export default function TrackOrder() {
           disabled={loading}
           className="w-full bg-[#ff8a00] hover:bg-[#e67a00] text-black font-bold py-2 rounded-full transition-all text-xs cursor-pointer shadow-md disabled:opacity-50"
         >
-          {loading ? 'جاري البحث...' : 'عرض الطلبات'}
+          {loading ? t.loading : t.button}
         </button>
       </div>
 
@@ -120,14 +142,17 @@ export default function TrackOrder() {
         <div className="flex flex-col gap-3 mt-3 max-h-[300px] overflow-y-auto pr-1">
           {orders.map((ord) => {
             const st = normalize(ord.status);
+            const statusText = t.statusNames[st] || st;
+            const formattedId = formatOrderNumber(ord);
+
             return (
-              <div key={ord.id} className="border border-gray-700 rounded-lg p-3 bg-[#1a1a1a]">
+              <div key={ord.id || ord.order_number} className="border border-gray-700 rounded-lg p-3 bg-[#1a1a1a]">
                 <div className="flex justify-between items-center text-[11px] text-gray-400 mb-1">
-                  <span>طلب رقم: #{ord.order_number || ord.order_sequence || ord.id.slice(0, 6)}</span>
-                  <span>{new Date(ord.created_at).toLocaleDateString('ar-DZ')}</span>
+                  <span>{t.orderNum} {bidiSafe(formattedId)}</span>
+                  <span>{ord.created_at ? new Date(ord.created_at).toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'en-US') : ''}</span>
                 </div>
                 <p className={`text-xs font-bold ${st === 'Cancelled' ? 'text-red-500' : 'text-[#ff8a00]'}`}>
-                  الحالة: {LABELS[st] || st}
+                  {t.status} {statusText}
                 </p>
               </div>
             );

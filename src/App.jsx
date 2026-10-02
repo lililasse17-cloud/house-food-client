@@ -825,9 +825,9 @@ function App() {
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-1">{t.cartEmptyTitle}</h2>
                 <p className="text-gray-400 text-xs sm:text-sm max-w-md mb-6">{t.cartEmptySub}</p>
                 
-                {/* مكون التظهر هنا داخل السلة الفارغة ليتمكن الزبون من تتبع طلبه بعد الإتمام */}
-                <div className="w-full max-w-md bg-[#1a1a1a] border border-gray-800 rounded-xl p-4 mb-6 shadow-xl">
-                  <TrackOrder />
+                {/* تمرير لغة المنصة lang ديناميكياً لمكون التتبع */}
+                <div className="w-full max-w-md bg-[#1a1a1a] border border-gray-800 rounded-xl p-4 mb-6 shadow-xl text-start">
+                  <TrackOrder lang={lang} />
                 </div>
 
                 <button
@@ -940,7 +940,7 @@ function App() {
 
                   {/* صندوق التتبع مصغراً في جانب السلة أيضاً */}
                   <div className="border-t border-gray-800 pt-4 mt-2">
-                    <TrackOrder />
+                    <TrackOrder lang={lang} />
                   </div>
                 </div>
               </div>
