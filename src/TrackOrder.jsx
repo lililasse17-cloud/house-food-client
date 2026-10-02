@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
 
-type DbStatus = 'New' | 'Confirmed' | 'Preparing' | 'Ready' | 'Completed' | 'Cancelled';
-
 interface TrackedOrder {
+  id: string;
   order_number: string;
   order_sequence: number | null;
   status: string;
   created_at: string;
   updated_at: string;
+  total: number;
 }
-
-const FLOW: DbStatus[] = ['New', 'Confirmed', 'Preparing', 'Ready', 'Completed'];
 
 const LABELS: Record<string, string> = {
   New: 'تم استلام طلبك',
@@ -35,19 +33,17 @@ const normalize = (s: unknown): string => {
   return map[k] ?? 'New';
 };
 
-const STORAGE_KEY = 'last_tracked_order';
+const STORAGE_KEY = 'last_tracked_phone';
 
 export default function TrackOrder() {
-  const [orderNumber, setOrderNumber] = useState('');
   const [phone, setPhone] = useState('');
-  const [order, setOrder] = useState<TrackedOrder | null>(null);
+  const [orders, setOrders] = useState<TrackedOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStatus = useCallback(async (num: string, ph: string, silent = false) => {
+  const fetchOrders = useCallback(async (ph: string, silent = false) => {
     if (!silent) setLoading(true);
     const { data, error } = await supabase.rpc('track_order', {
-      p_order_number: num,
       p_phone: ph,
     });
     if (!silent) setLoading(false);
@@ -56,123 +52,86 @@ export default function TrackOrder() {
       if (!silent) setError('حدث خطأ، حاول مرة أخرى.');
       return;
     }
-    const row = (Array.isArray(data) ? data[0] : data) as TrackedOrder | undefined;
-    if (!row) {
+    
+    const list = (Array.isArray(data) ? data : [data]).filter(Boolean) as TrackedOrder[];
+    if (list.length === 0) {
       if (!silent) {
-        setOrder(null);
-        setError('لم نجد طلباً بهذه البيانات. تأكد من رقم الطلب ورقم الهاتف.');
+        setOrders([]);
+        setError('لا توجد طلبات مسجلة برقم الهاتف هذا.');
       }
       return;
     }
     setError(null);
-    setOrder(row);
+    setOrders(list);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ num, ph }));
+      localStorage.setItem(STORAGE_KEY, ph);
     } catch {
-      /* تخزين محلي اختياري */
+      /* تخزين محلي */
     }
   }, []);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const { num, ph } = JSON.parse(saved);
-        setOrderNumber(num);
-        setPhone(ph);
-        fetchStatus(num, ph, true);
+      const savedPhone = localStorage.getItem(STORAGE_KEY);
+      if (savedPhone) {
+        setPhone(savedPhone);
+        fetchOrders(savedPhone, true);
       }
     } catch {
       /* لا شيء */
     }
-  }, [fetchStatus]);
-
-  useEffect(() => {
-    if (!order) return;
-    const st = normalize(order.status);
-    if (st === 'Completed' || st === 'Cancelled') return;
-    const id = setInterval(() => fetchStatus(orderNumber, phone, true), 10000);
-    return () => clearInterval(id);
-  }, [order, orderNumber, phone, fetchStatus]);
+  }, [fetchOrders]);
 
   const submit = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (!orderNumber.trim() || !phone.trim()) {
-      setError('أدخل رقم الطلب ورقم الهاتف.');
+    if (!phone.trim()) {
+      setError('الرجاء إدخال رقم الهاتف.');
       return;
     }
-    fetchStatus(orderNumber.trim(), phone.trim());
+    fetchOrders(phone.trim());
   };
-
-  const status = order ? normalize(order.status) : null;
-  const currentIdx = status ? FLOW.indexOf(status as DbStatus) : -1;
 
   return (
     <div dir="rtl" className="w-full text-white">
-      <h3 className="text-lg font-bold mb-3 text-[#ff8a00]">تتبع حالة طلبك لحظة بلحظة</h3>
+      <h3 className="text-sm sm:text-base font-bold mb-2.5 text-[#ff8a00]">تتبع طلباتك برقم الهاتف</h3>
 
-      <div className="flex flex-col gap-2.5 mb-4">
-        <input
-          value={orderNumber}
-          onChange={(e) => setOrderNumber(e.target.value)}
-          placeholder="رقم الطلب (مثال: 1 أو ORD-...)"
-          dir="ltr"
-          className="w-full bg-[#2a2a2a] border border-gray-600 rounded-md p-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#ff8a00]"
-        />
+      <div className="flex flex-col gap-2 mb-3">
         <input
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          placeholder="رقم الهاتف المستخدم في الطلب"
+          placeholder="أدخل رقم هاتفك..."
           dir="ltr"
           inputMode="tel"
-          className="w-full bg-[#2a2a2a] border border-gray-600 rounded-md p-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-[#ff8a00]"
+          className="w-full bg-[#2a2a2a] border border-gray-600 rounded-md p-2 text-xs text-white focus:outline-none focus:border-[#ff8a00]"
         />
         <button
           type="button"
           onClick={submit}
           disabled={loading}
-          className="w-full bg-[#ff8a00] hover:bg-[#e67a00] text-black font-bold py-2.5 rounded-full transition-all text-xs cursor-pointer shadow-md disabled:opacity-50"
+          className="w-full bg-[#ff8a00] hover:bg-[#e67a00] text-black font-bold py-2 rounded-full transition-all text-xs cursor-pointer shadow-md disabled:opacity-50"
         >
-          {loading ? 'جاري البحث...' : 'تتبع الطلب'}
+          {loading ? 'جاري البحث...' : 'عرض الطلبات'}
         </button>
       </div>
 
-      {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
+      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
 
-      {order && status && (
-        <div className="border border-gray-700 rounded-xl p-4 bg-[#1a1a1a] mt-3">
-          <p className="text-xs text-gray-400 mb-1">
-            رقم الطلب: <span className="text-white font-mono">{order.order_number || order.order_sequence}</span>
-          </p>
-          <p
-            className={`text-base font-bold my-2 ${
-              status === 'Cancelled' ? 'text-red-500' : 'text-[#ff8a00]'
-            }`}
-          >
-            {LABELS[status] || status}
-          </p>
-
-          {status !== 'Cancelled' && (
-            <ol className="list-none p-0 m-0 flex flex-col gap-2.5 mt-3">
-              {FLOW.map((s, i) => {
-                const done = i <= currentIdx;
-                return (
-                  <li key={s} className={`flex items-center gap-2.5 text-xs ${done ? 'opacity-100 text-white' : 'opacity-40 text-gray-400'}`}>
-                    <span
-                      className={`w-3 h-3 rounded-full inline-block shrink-0 ${
-                        done ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-gray-600'
-                      }`}
-                    />
-                    <span className={i === currentIdx ? 'font-bold text-[#ff8a00]' : ''}>{LABELS[s]}</span>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-
-          <p className="text-[10px] text-gray-500 mt-4 pt-2 border-t border-gray-800">
-            آخر تحديث: {new Date(order.updated_at).toLocaleString('ar-DZ')}
-          </p>
+      {orders.length > 0 && (
+        <div className="flex flex-col gap-3 mt-3 max-h-[300px] overflow-y-auto pr-1">
+          {orders.map((ord) => {
+            const st = normalize(ord.status);
+            return (
+              <div key={ord.id} className="border border-gray-700 rounded-lg p-3 bg-[#1a1a1a]">
+                <div className="flex justify-between items-center text-[11px] text-gray-400 mb-1">
+                  <span>طلب رقم: #{ord.order_number || ord.order_sequence || ord.id.slice(0, 6)}</span>
+                  <span>{new Date(ord.created_at).toLocaleDateString('ar-DZ')}</span>
+                </div>
+                <p className={`text-xs font-bold ${st === 'Cancelled' ? 'text-red-500' : 'text-[#ff8a00]'}`}>
+                  الحالة: {LABELS[st] || st}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
