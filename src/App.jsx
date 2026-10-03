@@ -44,7 +44,7 @@ const TEXT = {
       { icon: '🔥', title: 'Premium Taste', sub: 'Made with Passion' },
     ],
     exploreMenu: 'EXPLORE OUR MENU',
-    categories: { All: 'All', Burgers: 'Burgers', Pizza: 'Pizza', Drinks: 'Drinks' },
+    categories: { All: 'All' },
     loading: 'Loading menu...',
     emptyTitle: 'No products available at the moment',
     emptySub: 'New items will appear here as soon as they are added by the restaurant.',
@@ -109,7 +109,7 @@ const TEXT = {
       { icon: '🔥', title: 'طعم مميز', sub: 'محضّر بشغف' },
     ],
     exploreMenu: 'اكتشف المنيو',
-    categories: { All: 'الكل', Burgers: 'برغر', Pizza: 'بيتزا', Drinks: 'مشروبات' },
+    categories: { All: 'الكل' },
     loading: 'جاري تحميل المنيو...',
     emptyTitle: 'لا توجد منتجات متاحة حالياً',
     emptySub: 'ستظهر المنتجات هنا فور إضافتها من طرف المطعم.',
@@ -169,7 +169,9 @@ function App() {
 
   const [currentPage, setCurrentPage] = useState('home');
   const [activeCategory, setActiveCategory] = useState('All');
-  const categories = ['All', 'Burgers', 'Pizza', 'Drinks'];
+  
+  // تحويل التصنيفات لتصبح ديناميكية يتم جلبها من قاعدة البيانات
+  const [categories, setCategories] = useState(['All']);
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -197,6 +199,7 @@ function App() {
 
   useEffect(() => {
     fetchProducts();
+    fetchCategories();
 
     const channel = supabase
       .channel('public:products')
@@ -205,8 +208,16 @@ function App() {
       })
       .subscribe();
 
+    const catChannel = supabase
+      .channel('public:categories')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+        fetchCategories();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(catChannel);
     };
   }, []);
 
@@ -220,6 +231,19 @@ function App() {
       console.error('Error fetching products:', error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase.from('categories').select('*');
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const dbCategories = data.map((cat) => cat.name);
+        setCategories(['All', ...dbCategories]);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error.message);
     }
   };
 
@@ -730,7 +754,7 @@ function App() {
                         : 'border-[#333] text-gray-400 hover:border-gray-500 hover:text-white'
                     }`}
                   >
-                    {t.categories[cat]}
+                    {t.categories[cat] || cat}
                   </button>
                 ))}
               </div>
@@ -825,7 +849,6 @@ function App() {
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-1">{t.cartEmptyTitle}</h2>
                 <p className="text-gray-400 text-xs sm:text-sm max-w-md mb-6">{t.cartEmptySub}</p>
                 
-                {/* تمرير لغة المنصة lang ديناميكياً لمكون التتبع */}
                 <div className="w-full max-w-md bg-[#1a1a1a] border border-gray-800 rounded-xl p-4 mb-6 shadow-xl text-start">
                   <TrackOrder lang={lang} />
                 </div>
@@ -938,7 +961,6 @@ function App() {
                     </button>
                   </div>
 
-                  {/* صندوق التتبع مصغراً في جانب السلة أيضاً */}
                   <div className="border-t border-gray-800 pt-4 mt-2">
                     <TrackOrder lang={lang} />
                   </div>
